@@ -376,7 +376,7 @@ function toggleC(k){
 
 async function handleFile(e,key){
   const f=e.target.files[0];if(!f)return;
-  docs[key]={name:f.name,text:(await f.text()).slice(0,100000)};
+  docs[key]={name:f.name,text:(await f.text()).slice(0,20000)};
   renderEntities();
 }
 
@@ -444,10 +444,10 @@ ${docCtx}
         'X-Title':'Pharma Law Comparator'
       },
       body:JSON.stringify({
-        model:'meta-llama/llama-3.3-70b-instruct:free',
+        model:'google/gemini-2.0-flash-exp:free',
         messages:[{role:'user',content:prompt}],
         temperature:0.2,
-        max_tokens:4000
+        max_tokens:2000
       })
     });
     if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||e.error?.code||'API 오류');}
