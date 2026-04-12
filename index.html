@@ -256,14 +256,22 @@ table.rtbl tr:hover td{background:#FAFAF8;}
   </div>
 
   <div class="search-card">
-    <div class="search-lbl">키워드 검색</div>
-    <div class="search-row">
-      <input type="text" id="keyword" onkeydown="if(event.key==='Enter')doSearch()" placeholder="예: 임상시험 승인 절차, GMP 기준, 우대사항, 혜택..." />
-      <button class="search-btn" id="search-btn" onclick="doSearch()">AI 분석 시작</button>
+    <div class="search-lbl" style="display:flex;align-items:center;justify-content:space-between;">
+      <span id="search-mode-label">질문 / 키워드 입력</span>
+      <div style="display:flex;gap:4px;">
+        <button id="mode-kw-btn" onclick="setSearchMode('kw')" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-family:var(--font);">키워드</button>
+        <button id="mode-q-btn" onclick="setSearchMode('q')" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-family:var(--font);">줄글 질문</button>
+      </div>
     </div>
-    <div class="search-hint">
-      <b>문서 없이도 검색 가능</b> — AI 학습 지식으로 분석합니다.<br>
-      PDF/TXT 문서를 업로드하면 실제 문서 기반으로 더 정확하게 분석됩니다.
+    <div style="margin-top:9px;">
+      <textarea id="keyword" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();doSearch();}" placeholder="예: 임상시험 승인 절차, GMP 기준..." style="width:100%;border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;font-size:14px;font-family:var(--font);background:var(--bg);color:var(--text);outline:none;resize:vertical;min-height:48px;max-height:160px;line-height:1.6;transition:border-color .15s;"></textarea>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;flex-wrap:wrap;gap:8px;">
+      <div class="search-hint" style="margin-top:0;" id="search-hint-text">
+        <b>키워드 모드:</b> 핵심 단어로 입력 — 엔터로 바로 검색<br>
+        <b>줄글 모드:</b> "~가 어떻게 다른지 알고싶어" 처럼 자연어로 질문
+      </div>
+      <button class="search-btn" id="search-btn" onclick="doSearch()">AI 분석 시작</button>
     </div>
     <div class="kw-row" id="kw-samples"></div>
   </div>
@@ -344,6 +352,28 @@ function renderKwSamples(topic){
 }
 
 function setKw(t){document.getElementById('keyword').value=t;}
+
+let searchMode='kw';
+function setSearchMode(m){
+  searchMode=m;
+  const ta=document.getElementById('keyword');
+  const kwBtn=document.getElementById('mode-kw-btn');
+  const qBtn=document.getElementById('mode-q-btn');
+  const hint=document.getElementById('search-hint-text');
+  if(m==='kw'){
+    ta.style.minHeight='48px';
+    ta.placeholder='예: 임상시험 승인 절차, GMP 기준, 우대사항...';
+    kwBtn.style.background='var(--accent)';kwBtn.style.color='#fff';kwBtn.style.borderColor='var(--accent)';
+    qBtn.style.background='transparent';qBtn.style.color='var(--text2)';qBtn.style.borderColor='var(--border2)';
+    hint.innerHTML='<b>키워드 모드:</b> 핵심 단어 입력 — 엔터로 바로 검색<br>여러 키워드는 쉼표로 구분 (예: 임상시험, IRB, 승인기간)';
+  } else {
+    ta.style.minHeight='100px';
+    ta.placeholder='예: 임상시험 승인 시 IRB 구성요건이 나라별로 어떻게 다른지 알고싶어\n예: 희귀의약품 지정을 받으면 어떤 혜택이 있는지 각국 비교해줘\n예: GMP 실사 주기와 위반 시 제재 수위가 나라마다 어떻게 다른지 알려줘';
+    kwBtn.style.background='transparent';kwBtn.style.color='var(--text2)';kwBtn.style.borderColor='var(--border2)';
+    qBtn.style.background='var(--accent)';qBtn.style.color='#fff';qBtn.style.borderColor='var(--accent)';
+    hint.innerHTML='<b>줄글 질문 모드:</b> 궁금한 내용을 자연어로 질문하세요<br>Shift+Enter로 줄바꿈, Enter로 검색';
+  }
+}
 
 function renderEntities(){
   document.getElementById('entities').innerHTML=CS.map(c=>{
@@ -450,6 +480,36 @@ const OFFICIAL_SOURCES = {
   ],
 };
 
+
+function buildSourceChips(r){
+  const isDoc = r.sourcePage && r.sourcePage!=='일반지식' && r.sourcePage!=='일반 지식';
+  const srcs = OFFICIAL_SOURCES[r.countryKey]||[];
+  if(isDoc){
+    let h='';
+    h+=`<span class="ref-chip" style="background:#EAF3DE;color:#1A7F4B;border-color:#97C459;font-weight:500;">📄 ${r.sourcePage}</span>`;
+    if(r.sourceLine&&r.sourceLine!=='해당없음')
+      h+=`<span class="ref-chip" style="background:#EAF3DE;color:#1A7F4B;border-color:#97C459;">✏️ 줄 ${r.sourceLine}</span>`;
+    if(r.sourceParagraph&&r.sourceParagraph!=='해당없음')
+      h+=`<span class="ref-chip" style="background:#EAF3DE;color:#1A7F4B;border-color:#97C459;">¶ ${r.sourceParagraph}</span>`;
+    h+=`<span class="ref-chip" style="background:#EAF3DE;color:#1A7F4B;border-color:#97C459;">📂 업로드 문서</span>`;
+    return h;
+  } else {
+    let h='';
+    h+=`<span class="ref-chip" style="background:#FEF3E8;color:#C4620A;border-color:#EF9F27;font-weight:500;">🤖 AI 학습지식</span>`;
+    if(r.officialUrl)
+      h+=`<a href="${r.officialUrl}" target="_blank" class="ref-chip" style="background:#EEF2FD;color:#2D5BE3;border-color:#C0CFF8;text-decoration:none;font-weight:500;">🔗 AI 출처 →</a>`;
+    if(srcs.length){
+      h+=`<div style="margin-top:5px;padding:8px 10px;background:#F7F6F2;border-radius:6px;border:1px solid #E2DED6;">`;
+      h+=`<div style="font-size:10px;font-weight:600;color:#6B6760;margin-bottom:5px;letter-spacing:.04em;">📌 공식 참고사이트</div>`;
+      srcs.forEach(s=>{
+        h+=`<a href="${s.url}" target="_blank" style="display:block;font-size:11px;color:#2D5BE3;text-decoration:none;padding:2px 0;line-height:1.6;">${s.name} →</a>`;
+      });
+      h+=`</div>`;
+    }
+    return h;
+  }
+}
+
 async function doSearch(){
   const kw=document.getElementById('keyword').value.trim();
   if(!kw){alert('키워드를 입력해 주세요.');return;}
@@ -473,17 +533,20 @@ async function doSearch(){
       'free':'업로드된 문서 내용을 충실히 반영하여 핵심 내용과 차이점을 비교하세요.',
     }[currentMode]||'';
 
-    const prompt=`국제 비교 분석 전문가로서 아래 정보를 바탕으로 JSON만 반환하세요(마크다운 없이).
+    const isQuestion = searchMode==='q';
+    const prompt=`국제 비교 분석 전문가입니다. 아래 요청에 대해 JSON만 반환하세요(마크다운 없이).
 
-주제:"${topicLabel}" / 검색어:"${kw}"
+주제:"${topicLabel}"
+${isQuestion?'사용자 질문(한국어): '+kw : '검색 키워드: '+kw}
+${isQuestion?'※ 질문의 핵심 의도를 파악하여 각 국가에서 가장 관련성 높은 조항/규정/제도를 정확히 찾아주세요.':'※ 키워드와 직접 관련된 조항만 추출하세요. 문서에 있으면 해당 줄 번호까지 명시하세요.'}
 
-문서:
+각국 문서:
 ${docCtx}
 
-JSON 형식:
-{"summary":"핵심차이 2문장(한국어)","keyDiffs":[{"label":"항목","value":"값"}],"results":[{"countryKey":"kr","translatedText":"한국어 설명 3문장","originalText":"원문 1문장","sourcePage":"파일있으면 실제페이지번호(예:p.3) 없으면 일반지식","sourceLine":"파일있으면 실제줄번호범위(예:L.45-52) 없으면 해당없음","sourceParagraph":"파일있으면 해당문단요약(20자이내) 없으면 해당없음","lawName":"법령명","articleNum":"조문번호","officialUrl":"일반지식인경우 해당국가 공식 법령사이트URL"}]}
+반환 JSON 형식(반드시 이 구조 그대로):
+{"summary":"${isQuestion?'질문에 대한 국가별 핵심 차이 2-3문장':'키워드 관련 국가별 핵심 차이 2문장'}(한국어)","keyDiffs":[{"label":"비교항목","value":"핵심값"}],"results":[{"countryKey":"kr","translatedText":"${isQuestion?'질문에 직접 답하는 형태로 해당 국가 내용 4-5문장':'관련 조항 한국어 설명 3-4문장'}","originalText":"원문 언어 핵심문장 1-2개","sourcePage":"파일있으면 실제페이지(p.숫자) 없으면 일반지식","sourceLine":"파일있으면 줄번호(L.숫자-숫자) 없으면 해당없음","sourceParagraph":"파일있으면 해당문단 핵심어(15자이내) 없으면 해당없음","lawName":"정식 법령·문서명","articleNum":"조문·항목번호","officialUrl":"일반지식이면 해당국가 공식법령사이트 실제URL, 파일있으면 빈문자열"}]}
 
-대상국가: ${targets.map(c=>c.key).join(',')} 모두 포함. 파일없으면 sourcePage=일반지식`;
+대상국가: ${targets.map(c=>c.key).join(',')} 전부 포함 필수. 파일없는국가는 sourcePage=일반지식, officialUrl=실제공식URL 반드시 포함.`;
 
     const resp=await fetch('https://openrouter.ai/api/v1/chat/completions',{
       method:'POST',
