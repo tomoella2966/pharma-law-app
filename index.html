@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>국가별 문서 비교 분석기</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Noto+Serif+KR:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.umd.min.js"></script>
 <style>
 :root{
   --bg:#F7F6F2;--surface:#FFFFFF;--surface2:#F0EEE8;
@@ -221,7 +220,7 @@ table.rtbl tr:hover td{background:#FAFAF8;}
       <span class="chip on">한국어 검색</span>
       <span class="chip on">자동 번역</span>
       <span class="chip on">원문 출처 표기</span>
-      <span class="chip on">Word · PDF · HTML · MD</span>
+      <span class="chip on">Word · PDF 보고서</span>
       <span class="chip on">완전 무료</span>
     </div>
   </div>
@@ -609,10 +608,8 @@ function renderResult(data,kw){
     <div class="result-bar">
       <div class="result-kw">"<em>${kw}</em>" 분석 결과</div>
       <div class="exp-row">
-        <button class="exp-btn" onclick="exportWord()">📄 Word</button>
-        <button class="exp-btn" onclick="exportPDF()">🖨️ PDF</button>
-        <button class="exp-btn" onclick="exportHTML()">🌐 HTML</button>
-        <button class="exp-btn" onclick="exportMD()">📝 MD</button>
+        <button class="exp-btn" onclick="exportWord()">📄 Word 보고서</button>
+        <button class="exp-btn" onclick="exportPDF()">🖨️ PDF 출력</button>
       </div>
     </div>
     ${data.summary?`<div class="ai-sum"><div class="ai-sum-lbl"><span class="ai-dot"></span> AI 요약</div><div class="ai-sum-body">${data.summary}</div></div>`:''}
@@ -625,36 +622,107 @@ function renderResult(data,kw){
     </div></div>`;
 }
 
-function getRows(){return(lastData?.results||[]).filter(r=>active.has(r.countryKey)).map(r=>{const c=CS.find(x=>x.key===r.countryKey)||{};return{country:`${c.flag||''} ${c.name||r.countryKey}`,translated:r.translatedText||'',original:r.originalText||'',law:r.lawName||'',article:r.articleNum||'',page:r.sourcePage||'',line:r.sourceLine||''};});}
+function getRows(){return(lastData?.results||[]).filter(r=>active.has(r.countryKey)).map(r=>{const c=CS.find(x=>x.key===r.countryKey)||{};return{country:`${c.flag||''} ${c.name||r.countryKey}`,translated:r.translatedText||'',original:r.originalText||'',law:r.lawName||'',article:r.articleNum||'',page:r.sourcePage||'',line:r.sourceLine||'',url:r.officialUrl||''};});}
 
-async function exportWord(){
+// ── Word 생성: docx.js 없이 XML 직접 생성 ──
+function exportWord(){
   if(!lastData){alert('먼저 분석을 실행하세요.');return;}
-  try{
-    const {Document,Packer,Paragraph,Table,TableRow,TableCell,TextRun,HeadingLevel,AlignmentType,WidthType}=docx;
-    const now=new Date().toLocaleDateString('ko-KR');const rows=getRows();
-    const mkCell=(text,bold=false,shade=false)=>new TableCell({children:[new Paragraph({children:[new TextRun({text:String(text),bold,size:18,color:shade?'FFFFFF':'1A1916'})],alignment:shade?AlignmentType.CENTER:AlignmentType.LEFT})],shading:shade?{fill:'2D5BE3'}:undefined});
-    const header=new TableRow({children:['국가','한국어 번역·분석','원문 내용','출처'].map(t=>mkCell(t,true,true))});
-    const dataRows=rows.map(r=>new TableRow({children:[mkCell(r.country),mkCell(r.translated),mkCell(r.original),mkCell(`${r.law} ${r.article}\n${r.page}`)]}));
-    const document=new Document({sections:[{children:[
-      new Paragraph({text:`${getTopicLabel()} 비교 분석 보고서`,heading:HeadingLevel.HEADING_1}),
-      new Paragraph({children:[new TextRun({text:`키워드: ${lastKw}  |  생성일: ${now}`,size:20,color:'666666'})]}),
-      new Paragraph({text:''}),new Paragraph({text:'AI 요약',heading:HeadingLevel.HEADING_2}),
-      new Paragraph({children:[new TextRun({text:lastData.summary||'',size:20})]}),
-      new Paragraph({text:''}),new Paragraph({text:'국가별 비교표',heading:HeadingLevel.HEADING_2}),
-      new Paragraph({text:''}),
-      new Table({rows:[header,...dataRows],width:{size:100,type:WidthType.PERCENTAGE}}),
-    ]}]});
-    dl(await Packer.toBlob(document),`비교분석_${lastKw}_${now}.docx`);
-  }catch(e){alert('Word 생성 오류: '+e.message);}
+  const now=new Date().toLocaleDateString('ko-KR');
+  const rows=getRows();
+  const topic=getTopicLabel();
+
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+  function makeRow(cells,isHeader=false){
+    const shading=isHeader?'<w:shd w:val="clear" w:color="auto" w:fill="2D5BE3"/><w:jc w:val="center"/>':'';
+    const bold=isHeader?'<w:b/>':'';
+    const color=isHeader?'<w:color w:val="FFFFFF"/>':'';
+    return `<w:tr>${cells.map(c=>`<w:tc><w:tcPr>${shading}</w:tcPr><w:p><w:pPr><w:jc w:val="${isHeader?'center':'left'}"/></w:pPr><w:r><w:rPr>${bold}${color}<w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${esc(c)}</w:t></w:r></w:p></w:tc>`).join('')}</w:tr>`;
+  }
+
+  const headerRow=makeRow(['국가','한국어 번역·분석','원문 조항','출처'],true);
+  const dataRows=rows.map(r=>makeRow([
+    r.country,
+    r.translated,
+    r.original,
+    `${r.law} ${r.article}
+페이지: ${r.page}
+줄: ${r.line||'-'}`
+  ])).join('');
+
+  const xml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body>
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${esc(topic)} 비교 분석 보고서</w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:color w:val="888888"/><w:sz w:val="20"/></w:rPr><w:t>검색: ${esc(lastKw)} | 생성일: ${esc(now)} | Google AI 분석</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>AI 요약</w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${esc(lastData.summary||'')}</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>국가별 비교표</w:t></w:r></w:p>
+<w:tbl>
+<w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="9360" w:type="dxa"/>
+<w:tblBorders>
+<w:top w:val="single" w:sz="4" w:color="E2DED6"/>
+<w:left w:val="single" w:sz="4" w:color="E2DED6"/>
+<w:bottom w:val="single" w:sz="4" w:color="E2DED6"/>
+<w:right w:val="single" w:sz="4" w:color="E2DED6"/>
+<w:insideH w:val="single" w:sz="4" w:color="E2DED6"/>
+<w:insideV w:val="single" w:sz="4" w:color="E2DED6"/>
+</w:tblBorders></w:tblPr>
+${headerRow}${dataRows}
+</w:tbl>
+<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>
+</w:body></w:document>`;
+
+  // docx zip 생성
+  const rels=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
+  const wordRels=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  const contentTypes=`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+
+  // JSZip 없이 직접 Blob으로 HTML 보고서를 .doc (Word HTML) 형식으로 저장
+  const wordHtml=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<style>
+@page{size:A4 landscape;margin:1.5cm;}
+body{font-family:'맑은 고딕','Noto Sans KR',sans-serif;font-size:10pt;color:#1A1916;}
+h1{font-size:16pt;color:#2D5BE3;border-bottom:2pt solid #2D5BE3;padding-bottom:4pt;margin-bottom:6pt;}
+h2{font-size:12pt;color:#1A1916;margin-top:12pt;margin-bottom:4pt;}
+.meta{font-size:9pt;color:#888;margin-bottom:12pt;}
+.summary{background:#EEF2FD;border-left:4pt solid #2D5BE3;padding:8pt 10pt;margin-bottom:12pt;font-size:10pt;line-height:1.6;}
+table{border-collapse:collapse;width:100%;margin-top:8pt;}
+th{background:#2D5BE3;color:#fff;padding:6pt 8pt;font-size:9pt;text-align:left;border:1pt solid #2D5BE3;}
+td{padding:6pt 8pt;border:1pt solid #E2DED6;vertical-align:top;font-size:9pt;line-height:1.6;}
+tr:nth-child(even) td{background:#F7F6F2;}
+.src-doc{color:#1A7F4B;font-size:8pt;}
+.src-ai{color:#C4620A;font-size:8pt;}
+</style>
+</head><body>
+<h1>${esc(topic)} 비교 분석 보고서</h1>
+<div class="meta">검색: <b>${esc(lastKw)}</b> &nbsp;|&nbsp; 생성일: ${esc(now)} &nbsp;|&nbsp; Google AI 분석</div>
+${lastData.summary?`<div class="summary"><b>AI 요약:</b> ${esc(lastData.summary)}</div>`:''}
+<h2>국가별 비교표</h2>
+<table>
+<thead><tr><th style="width:80pt">국가</th><th>한국어 번역·분석</th><th style="width:160pt">원문 조항</th><th style="width:130pt">출처</th></tr></thead>
+<tbody>${rows.map(r=>{
+  const isDoc=r.page&&r.page!=='일반지식'&&r.page!=='일반 지식';
+  const srcHtml=isDoc
+    ?`<span class="src-doc">📂 업로드 문서<br>📄 ${esc(r.page)}<br>${r.line&&r.line!=='해당없음'?'✏️ 줄 '+esc(r.line)+'<br>':''}</span>`
+    :`<span class="src-ai">🤖 AI 학습지식<br>${r.url?`<a href="${esc(r.url)}">${esc(r.url)}</a>`:'공식사이트 참고'}</span>`;
+  return `<tr><td><b>${esc(r.country)}</b></td><td>${esc(r.translated)}</td><td style="font-family:monospace;font-size:8pt;">${esc(r.original)}</td><td>${esc(r.law)}<br>${esc(r.article)}<br>${srcHtml}</td></tr>`;
+}).join('')}
+</tbody></table>
+</body></html>`;
+
+  dl(new Blob(['﻿'+wordHtml],{type:'application/msword'}),`비교분석_${lastKw.slice(0,20)}_${now}.doc`);
 }
-function exportPDF(){if(!lastData){alert('먼저 분석을 실행하세요.');return;}const w=window.open('','_blank');w.document.write(buildHTML());w.document.close();setTimeout(()=>w.print(),900);}
-function exportHTML(){if(!lastData){alert('먼저 분석을 실행하세요.');return;}dl(new Blob([buildHTML()],{type:'text/html'}),`비교분석_${lastKw}_${new Date().toLocaleDateString('ko-KR')}.html`);}
-function exportMD(){
+
+function exportPDF(){
   if(!lastData){alert('먼저 분석을 실행하세요.');return;}
-  const now=new Date().toLocaleDateString('ko-KR');const rows=getRows();
-  let md=`# ${getTopicLabel()} 비교 분석 보고서\n\n**키워드:** ${lastKw}  \n**생성일:** ${now}\n\n## AI 요약\n\n${lastData.summary||''}\n\n## 국가별 비교표\n\n| 국가 | 한국어 번역·분석 | 원문 내용 | 출처 |\n|---|---|---|---|\n`;
-  rows.forEach(r=>{md+=`| ${r.country} | ${r.translated.replace(/\n/g,' ')} | ${r.original.replace(/\n/g,' ')} | ${r.law} ${r.article} ${r.page} |\n`;});
-  dl(new Blob([md],{type:'text/markdown'}),`비교분석_${lastKw}_${now}.md`);
+  const w=window.open('','_blank');
+  w.document.write(buildHTML());
+  w.document.close();
+  setTimeout(()=>w.print(),900);
 }
 function buildHTML(){
   const now=new Date().toLocaleDateString('ko-KR');const rows=getRows();const topic=getTopicLabel();
