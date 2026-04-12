@@ -376,7 +376,7 @@ function toggleC(k){
 
 async function handleFile(e,key){
   const f=e.target.files[0];if(!f)return;
-  docs[key]={name:f.name,text:(await f.text()).slice(0,20000)};
+  docs[key]={name:f.name,text:(await f.text()).slice(0,8000)};
   renderEntities();
 }
 
@@ -423,17 +423,17 @@ async function doSearch(){
       'free':'업로드된 문서 내용을 충실히 반영하여 핵심 내용과 차이점을 비교하세요.',
     }[currentMode]||'';
 
-    const prompt=`당신은 국제 비교 분석 전문가입니다.
-분석 주제: "${topicLabel}"
-사용자 검색어(한국어): "${kw}"
-분석 지침: ${modePrompt}
+    const prompt=`국제 비교 분석 전문가로서 아래 정보를 바탕으로 JSON만 반환하세요(마크다운 없이).
 
-각국 문서:
+주제:"${topicLabel}" / 검색어:"${kw}"
+
+문서:
 ${docCtx}
 
-아래 JSON 형식으로만 응답 (마크다운 없이 순수 JSON):
-{"summary":"국가 간 핵심 차이점 및 공통점 2-3문장(한국어)","keyDiffs":[{"label":"비교 항목명","value":"핵심 비교값"}],"results":[{"countryKey":"kr","translatedText":"관련 내용 한국어 상세 설명 4-6문장, 실무적으로 중요한 내용 포함","originalText":"원문 언어 그대로의 핵심 내용 1-3문장","sourcePage":"p.XX 또는 일반지식","sourceLine":"L.XX-XX 또는 해당없음","lawName":"문서·법령 정식명칭","articleNum":"조문번호 또는 항목명"}]}
-반드시 ${targets.map(c=>c.key).join(', ')} 모든 국가 결과 포함. 파일 없으면 sourcePage를 "일반지식"으로.`;
+JSON 형식:
+{"summary":"핵심차이 2문장(한국어)","keyDiffs":[{"label":"항목","value":"값"}],"results":[{"countryKey":"kr","translatedText":"한국어 설명 3문장","originalText":"원문 1문장","sourcePage":"p.XX또는일반지식","sourceLine":"L.XX또는해당없음","lawName":"법령명","articleNum":"조문"}]}
+
+대상국가: ${targets.map(c=>c.key).join(',')} 모두 포함. 파일없으면 sourcePage=일반지식`;
 
     const resp=await fetch('https://openrouter.ai/api/v1/chat/completions',{
       method:'POST',
@@ -444,7 +444,7 @@ ${docCtx}
         'X-Title':'Pharma Law Comparator'
       },
       body:JSON.stringify({
-        model:'meta-llama/llama-3.3-70b-instruct:free',
+        model:'mistralai/mistral-small-3.1-24b-instruct:free',
         messages:[{role:'user',content:prompt}],
         temperature:0.2,
         max_tokens:2000
