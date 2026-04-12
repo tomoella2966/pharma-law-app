@@ -376,7 +376,23 @@ function toggleC(k){
 
 async function handleFile(e,key){
   const f=e.target.files[0];if(!f)return;
-  docs[key]={name:f.name,text:(await f.text()).slice(0,8000)};
+  const raw=await f.text();
+  // 페이지 구분 처리: form feed(\f) 또는 [PAGE] 마커로 페이지 번호 삽입
+  let processed='';
+  let lineNum=1;
+  let pageNum=1;
+  const lines=raw.split('\n');
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    if(line.includes('\f')||line.trim()==='[PAGE]'||line.trim().match(/^={5,}\s*\d+\s*={5,}$/)){
+      pageNum++;
+      processed+=`\n[페이지${pageNum}시작]\n`;
+    } else {
+      processed+=`[L${lineNum}] ${line}\n`;
+      lineNum++;
+    }
+  }
+  docs[key]={name:f.name,text:processed.slice(0,12000),raw:raw,totalLines:lineNum,totalPages:pageNum};
   renderEntities();
 }
 
@@ -399,6 +415,40 @@ function saveOrKey(){
   s.style.color = '#1A7F4B';
   document.getElementById('or-key-input').value = '';
 }
+
+
+const OFFICIAL_SOURCES = {
+  kr: [
+    {name:'식품의약품안전처 법령정보', url:'https://www.mfds.go.kr/brd/m_218/list.do'},
+    {name:'국가법령정보센터 약사법', url:'https://www.law.go.kr/법령/약사법'},
+    {name:'식약처 의약품 안전나라', url:'https://nedrug.mfds.go.kr'},
+  ],
+  us: [
+    {name:'FDA Electronic Code of Federal Regulations', url:'https://www.ecfr.gov/current/title-21'},
+    {name:'FDA Drugs Guidance Documents', url:'https://www.fda.gov/drugs/guidance-compliance-regulatory-information/guidances-drugs'},
+    {name:'FDA Orange Book', url:'https://www.accessdata.fda.gov/scripts/cder/ob/'},
+  ],
+  eu: [
+    {name:'EMA Legislation', url:'https://www.ema.europa.eu/en/about-us/legal-framework'},
+    {name:'EudraLex – EU Pharmaceutical Legislation', url:'https://health.ec.europa.eu/medicinal-products/eudralex_en'},
+    {name:'EMA Guidelines', url:'https://www.ema.europa.eu/en/human-regulatory-overview/research-development/scientific-guidelines'},
+  ],
+  jp: [
+    {name:'厚生労働省 薬機法', url:'https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/kenkou_iryou/iyakuhin/'},
+    {name:'PMDA 独立行政法人医薬品医療機器総合機構', url:'https://www.pmda.go.jp'},
+    {name:'e-Gov 薬機法全文', url:'https://elaws.e-gov.go.jp/document?lawid=335AC0000000145'},
+  ],
+  uk: [
+    {name:'MHRA Guidance', url:'https://www.gov.uk/government/organisations/medicines-and-healthcare-products-regulatory-agency'},
+    {name:'UK Statutory Instruments – Medicines', url:'https://www.legislation.gov.uk/uksi'},
+    {name:'NICE Guidelines', url:'https://www.nice.org.uk/guidance'},
+  ],
+  cn: [
+    {name:'国家药品监督管理局 NMPA', url:'https://www.nmpa.gov.cn'},
+    {name:'药品管理法全文', url:'https://www.nmpa.gov.cn/xxgk/fgwj/flxzhfg/20190827083801685.html'},
+    {name:'中国政府网 药品法规', url:'https://www.gov.cn/zhengce/zuixin/yaopin/'},
+  ],
+};
 
 async function doSearch(){
   const kw=document.getElementById('keyword').value.trim();
@@ -431,7 +481,7 @@ async function doSearch(){
 ${docCtx}
 
 JSON 형식:
-{"summary":"핵심차이 2문장(한국어)","keyDiffs":[{"label":"항목","value":"값"}],"results":[{"countryKey":"kr","translatedText":"한국어 설명 3문장","originalText":"원문 1문장","sourcePage":"p.XX또는일반지식","sourceLine":"L.XX또는해당없음","lawName":"법령명","articleNum":"조문"}]}
+{"summary":"핵심차이 2문장(한국어)","keyDiffs":[{"label":"항목","value":"값"}],"results":[{"countryKey":"kr","translatedText":"한국어 설명 3문장","originalText":"원문 1문장","sourcePage":"파일있으면 실제페이지번호(예:p.3) 없으면 일반지식","sourceLine":"파일있으면 실제줄번호범위(예:L.45-52) 없으면 해당없음","sourceParagraph":"파일있으면 해당문단요약(20자이내) 없으면 해당없음","lawName":"법령명","articleNum":"조문번호","officialUrl":"일반지식인경우 해당국가 공식 법령사이트URL"}]}
 
 대상국가: ${targets.map(c=>c.key).join(',')} 모두 포함. 파일없으면 sourcePage=일반지식`;
 
