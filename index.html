@@ -268,7 +268,7 @@ table.rtbl tr:hover td{background:#FAFAF8;}
 <script>
 // ══════════════════════════════════════════
 //  ★ API 키를 여기에 고정으로 입력하세요 ★
-const GEMINI_API_KEY = 'AIzaSyC5SMLuoQWQ6LohNB_VMcHL07BYLSvf6w8';
+const OPENROUTER_API_KEY = "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";
 // ══════════════════════════════════════════
 
 const CS=[
@@ -410,13 +410,24 @@ ${docCtx}
 {"summary":"국가 간 핵심 차이점 및 공통점 2-3문장(한국어)","keyDiffs":[{"label":"비교 항목명","value":"핵심 비교값"}],"results":[{"countryKey":"kr","translatedText":"관련 내용 한국어 상세 설명 4-6문장, 실무적으로 중요한 내용 포함","originalText":"원문 언어 그대로의 핵심 내용 1-3문장","sourcePage":"p.XX 또는 일반지식","sourceLine":"L.XX-XX 또는 해당없음","lawName":"문서·법령 정식명칭","articleNum":"조문번호 또는 항목명"}]}
 반드시 ${targets.map(c=>c.key).join(', ')} 모든 국가 결과 포함. 파일 없으면 sourcePage를 "일반지식"으로.`;
 
-    const resp=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.2,maxOutputTokens:4000}})
+    const resp=await fetch('https://openrouter.ai/api/v1/chat/completions',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer '+OPENROUTER_API_KEY,
+        'HTTP-Referer':'https://pharma-law-app.vercel.app',
+        'X-Title':'국가별 문서 비교 분석기'
+      },
+      body:JSON.stringify({
+        model:'meta-llama/llama-3.3-70b-instruct:free',
+        messages:[{role:'user',content:prompt}],
+        temperature:0.2,
+        max_tokens:4000
+      })
     });
-    if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||'API 오류');}
+    if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||e.error?.code||'API 오류');}
     const data=await resp.json();
-    const raw=data.candidates[0].content.parts[0].text.replace(/```json|```/g,'').trim();
+    const raw=data.choices[0].message.content.replace(/```json|```/g,'').trim();
     lastData=JSON.parse(raw);
     renderResult(lastData,kw);
   }catch(e){
