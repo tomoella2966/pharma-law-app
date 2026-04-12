@@ -245,7 +245,7 @@ table.rtbl tr:hover td{background:#FAFAF8;}
   <div class="search-card">
     <div class="search-lbl">키워드 검색</div>
     <div class="search-row">
-      <input type="text" id="keyword" placeholder="예: 임상시험 승인 절차, GMP 기준, 우대사항, 혜택..." />
+      <input type="text" id="keyword" onkeydown="if(event.key==='Enter')doSearch()" placeholder="예: 임상시험 승인 절차, GMP 기준, 우대사항, 혜택..." />
       <button class="search-btn" id="search-btn" onclick="doSearch()">AI 분석 시작</button>
     </div>
     <div class="search-hint">
@@ -268,7 +268,7 @@ table.rtbl tr:hover td{background:#FAFAF8;}
 <script>
 // ══════════════════════════════════════════
 //  ★ API 키를 여기에 고정으로 입력하세요 ★
-const GEMINI_API_KEY = 'AIzaSyCvxDEY3cJQIswqbIhyHD-yODnoVgNT5tA';
+const GEMINI_API_KEY = 'AIzaSyC5SMLuoQWQ6LohNB_VMcHL07BYLSvf6w8';
 // ══════════════════════════════════════════
 
 const CS=[
