@@ -743,17 +743,164 @@ function getRows(){return(lastData?.results||[]).filter(r=>active.has(r.countryK
 // ── 공통 유틸: HTML 특수문자 이스케이프 ──
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-// ── Word 생성: docx.js 없이 XML 직접 생성 ──
+// ── Word 보고서 (섹션별 보고서 형식) ──
 function exportWordDoc(){
-  exportByType('report');
-}
-function exportLawWord(){
-  exportByType('law');
-}
-function exportByType(type){
   if(!lastData){alert('먼저 분석을 실행하세요.');return;}
+  syncEditables();
   const now=new Date().toLocaleDateString('ko-KR');
-  // 편집된 내용 반영
+  const rows=getRows();
+  const topic=getTopicLabel();
+
+  const wordHtml=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<style>
+@page{size:A4;margin:2cm 2.5cm;}
+body{font-family:'맑은 고딕','Noto Sans KR',sans-serif;font-size:10pt;color:#1A1916;line-height:1.7;}
+.doc-header{text-align:right;font-size:8pt;color:#888;margin-bottom:6pt;border-bottom:0.5pt solid #ccc;padding-bottom:4pt;}
+h1{font-size:16pt;font-weight:700;color:#1A1916;text-align:center;margin:18pt 0 4pt;letter-spacing:-0.5pt;}
+h2{font-size:12pt;font-weight:700;color:#1A1916;margin:14pt 0 4pt;border-bottom:1pt solid #1A1916;padding-bottom:2pt;}
+.meta{font-size:9pt;color:#555;text-align:center;margin-bottom:14pt;}
+.summary-box{border:1pt solid #ccc;padding:9pt 11pt;margin-bottom:14pt;font-size:9.5pt;line-height:1.75;background:#f9f9f9;}
+.summary-box b{color:#1A1916;}
+.section{margin-bottom:12pt;padding:9pt 11pt;border:0.5pt solid #ddd;}
+.section-title{font-size:11pt;font-weight:700;margin-bottom:5pt;color:#1A1916;}
+.section-country{font-size:9pt;color:#444;margin-bottom:3pt;}
+.section-body{font-size:9.5pt;line-height:1.8;margin-bottom:6pt;}
+.section-orig{font-size:8.5pt;font-family:'Courier New',monospace;background:#f0f0f0;padding:5pt 7pt;margin-bottom:4pt;color:#333;}
+.section-ref{font-size:8pt;color:#888;}
+.footer{margin-top:18pt;padding-top:6pt;border-top:0.5pt solid #ccc;font-size:8pt;color:#888;text-align:center;}
+</style>
+</head><body>
+<div class="doc-header">국가별 비교 분석 보고서 &nbsp;|&nbsp; ${esc(now)}</div>
+<h1>${esc(topic)}</h1>
+<div class="meta">검색 키워드: <b>${esc(lastKw)}</b> &nbsp;|&nbsp; 생성일: ${esc(now)} &nbsp;|&nbsp; Google Gemini AI 분석</div>
+${lastData.summary?`<div class="summary-box"><b>▶ AI 요약</b><br>${esc(lastData.summary)}</div>`:''}
+<h2>국가별 분석 내용</h2>
+${rows.map((r,i)=>{
+  const isDoc=r.page&&r.page!=='일반지식'&&r.page!=='일반 지식';
+  const ref=isDoc?`업로드 문서 · ${esc(r.page)}${r.line&&r.line!=='해당없음'?' · 줄 '+esc(r.line):''}`:`AI 학습지식${r.url?' · '+esc(r.url):''}`;
+  return `<div class="section">
+<div class="section-title">${i+1}. ${esc(r.country)}</div>
+<div class="section-country">${esc(r.law)} ${esc(r.article)}</div>
+<div class="section-body">${esc(r.translated)}</div>
+${r.original?`<div class="section-orig">[원문] ${esc(r.original)}</div>`:''}
+<div class="section-ref">출처: ${ref}</div>
+</div>`;
+}).join('')}
+<div class="footer">본 보고서는 Google Gemini AI가 생성하였습니다. 법적 효력이 없으며 참고용으로만 활용하시기 바랍니다.</div>
+</body></html>`;
+
+  dl(new Blob(['\uFEFF'+wordHtml],{type:'application/msword'}),`보고서_${lastKw.slice(0,20)}_${now}.doc`);
+}
+
+// ── 법령 비교표 (국가법령정보센터 3단 비교표 양식) ──
+function exportLawWord(){
+  if(!lastData){alert('먼저 분석을 실행하세요.');return;}
+  syncEditables();
+  const now=new Date().toLocaleDateString('ko-KR');
+  const rows=getRows();
+  const topic=getTopicLabel();
+  const activeCS=CS.filter(c=>rows.find(r=>r.country.includes(c.name)));
+
+  // 3단 분할: 국가를 법률/시행령/시행규칙 역할로 배치 (최대 3열, 초과시 추가 행)
+  const chunkSize=3;
+  const chunks=[];
+  for(let i=0;i<rows.length;i+=chunkSize) chunks.push(rows.slice(i,i+chunkSize));
+
+  const colW=['33%','33%','34%'];
+
+  // 각 chunk → 헤더행 + 데이터행
+  const chunkHtml=chunks.map(chunk=>{
+    // 헤더: 국가명 + 법령명
+    const headers=chunk.map((r,ci)=>`<th style="width:${colW[ci]};border:1pt solid #1A1916;padding:5pt 7pt;font-size:9pt;font-weight:700;text-align:center;background:#f0f0f0;">
+      <div style="font-size:10pt;font-weight:700;">${esc(r.country)}</div>
+      <div style="font-size:7.5pt;color:#555;font-weight:400;margin-top:2pt;">${esc(r.law)}</div>
+    </th>`).join('');
+
+    // 데이터: 번역 내용
+    const translated=chunk.map((r,ci)=>`<td style="width:${colW[ci]};border:1pt solid #ccc;padding:6pt 8pt;font-size:9pt;line-height:1.8;vertical-align:top;">${esc(r.translated)}</td>`).join('');
+
+    // 원문: 원문 조항
+    const originals=chunk.map((r,ci)=>`<td style="width:${colW[ci]};border:1pt solid #ccc;padding:5pt 7pt;font-size:8pt;font-family:'Courier New',monospace;line-height:1.7;vertical-align:top;color:#333;background:#fafafa;">${esc(r.original||'—')}</td>`).join('');
+
+    // 출처
+    const refs=chunk.map((r,ci)=>{
+      const isDoc=r.page&&r.page!=='일반지식'&&r.page!=='일반 지식';
+      const ref=isDoc?`📂 업로드 문서\n${esc(r.page)}${r.line&&r.line!=='해당없음'?'\n줄 '+esc(r.line):''}`:`🤖 AI 학습지식`;
+      return`<td style="width:${colW[ci]};border:1pt solid #ccc;padding:5pt 7pt;font-size:8pt;line-height:1.7;vertical-align:top;color:#666;">${esc(r.article)}<br>${ref.replace(/\n/g,'<br>')}</td>`;
+    }).join('');
+
+    // 빈 열 패딩 (3개 미만일 때)
+    const pad=Array(chunkSize-chunk.length).fill('').map((_,ci)=>`<td style="border:1pt solid #eee;background:#fafafa;"></td>`).join('');
+
+    return `<tr>${headers}${pad.replace(/<td/g,'<th').replace(/<\/td>/g,'</th>')}</tr>
+<tr>${translated}${pad}</tr>
+<tr>${originals}${pad}</tr>
+<tr>${refs}${pad}</tr>
+<tr><td colspan="${chunkSize}" style="height:6pt;border:none;background:#fff;"></td></tr>`;
+  }).join('');
+
+  const lawHtml=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<style>
+@page{size:A4 landscape;margin:1.5cm 1.8cm;}
+body{font-family:'맑은 고딕','Noto Sans KR',sans-serif;font-size:9pt;color:#1A1916;line-height:1.6;}
+.doc-top{font-size:7.5pt;color:#888;text-align:right;border-bottom:0.5pt solid #ccc;padding-bottom:3pt;margin-bottom:8pt;}
+.main-title-wrap{text-align:center;margin-bottom:10pt;border-bottom:2pt solid #1A1916;padding-bottom:6pt;}
+.main-title{font-size:15pt;font-weight:700;letter-spacing:-0.3pt;}
+.main-sub{font-size:10pt;margin-top:4pt;font-weight:400;}
+.keyword-bar{text-align:center;font-size:8.5pt;color:#555;margin-bottom:10pt;}
+.section-label{font-size:8pt;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:5pt;}
+table.law-tbl{width:100%;border-collapse:collapse;border:1.5pt solid #1A1916;margin-bottom:10pt;}
+table.law-tbl th{background:#e8e8e8;font-size:8.5pt;font-weight:700;border:1pt solid #1A1916;padding:5pt 7pt;text-align:center;}
+table.law-tbl td{font-size:8.5pt;border:0.5pt solid #ccc;padding:5pt 7pt;vertical-align:top;line-height:1.8;}
+.row-label{background:#f5f5f5;font-weight:700;font-size:7.5pt;text-align:center;width:50pt;border:0.5pt solid #ccc;padding:5pt 4pt;color:#444;writing-mode:horizontal-tb;}
+.summary-row td{background:#f9f9f9;font-size:8.5pt;font-style:italic;color:#444;padding:6pt 8pt;border-top:1pt solid #1A1916;}
+.footer-bar{margin-top:8pt;padding-top:5pt;border-top:0.5pt solid #ccc;font-size:7pt;color:#aaa;display:flex;justify-content:space-between;}
+</style>
+</head><body>
+<div class="doc-top">(${chunkSize}단비교표)「${esc(topic)}」</div>
+<div class="main-title-wrap">
+  <div class="main-title">3단비교표 (국가별 법령 비교)</div>
+  <div class="main-sub">「${esc(topic)}」</div>
+</div>
+<div class="keyword-bar">검색 키워드: <b>${esc(lastKw)}</b> &nbsp;|&nbsp; 분석일: ${esc(now)} &nbsp;|&nbsp; Google Gemini AI 분석</div>
+${lastData.summary?`<table style="width:100%;border-collapse:collapse;margin-bottom:10pt;border:1pt solid #1A1916;"><tr><td style="background:#f0f0f0;font-weight:700;font-size:8pt;padding:5pt 8pt;width:50pt;border-right:1pt solid #1A1916;">AI 요약</td><td style="font-size:8.5pt;padding:5pt 8pt;line-height:1.75;">${esc(lastData.summary)}</td></tr></table>`:''}
+<div class="section-label">▼ 국가별 조문 비교</div>
+<table class="law-tbl">
+<thead><tr>
+  <th style="width:50pt;background:#1A1916;color:#fff;">구분</th>
+  ${chunks[0]?.map((r,ci)=>`<th style="width:${colW[ci]};">${esc(r.country)}<br><span style="font-weight:400;font-size:7.5pt;">${esc(r.law)}</span></th>`).join('')}
+</tr></thead>
+<tbody>
+${chunks.map(chunk=>{
+  const pad=Array(chunkSize-chunk.length).fill('<td style="background:#fafafa;border:0.5pt solid #eee;"></td>').join('');
+  return `<tr>
+    <td class="row-label" style="background:#1A1916;color:#fff;font-size:7.5pt;text-align:center;padding:5pt 4pt;"><b>${esc(chunk[0]?.country||'')}</b><br><span style="font-size:6.5pt;font-weight:400;">${esc(chunk[0]?.law||'')}</span></td>
+    ${chunk.map(r=>`<td style="font-size:8.5pt;line-height:1.85;padding:6pt 8pt;vertical-align:top;">${esc(r.translated)}</td>`).join('')}${pad}
+  </tr>
+  <tr>
+    <td style="background:#f5f5f5;font-size:7pt;text-align:center;color:#888;padding:3pt;border:0.5pt solid #ccc;">원문</td>
+    ${chunk.map(r=>`<td style="font-size:8pt;font-family:'Courier New',monospace;background:#fafafa;padding:5pt 8pt;line-height:1.7;color:#444;vertical-align:top;">${esc(r.original||'—')}</td>`).join('')}${pad}
+  </tr>
+  <tr>
+    <td style="background:#f5f5f5;font-size:7pt;text-align:center;color:#888;padding:3pt;border:0.5pt solid #ccc;">출처</td>
+    ${chunk.map(r=>{
+      const isDoc=r.page&&r.page!=='일반지식'&&r.page!=='일반 지식';
+      return`<td style="font-size:7.5pt;padding:4pt 8pt;color:#666;line-height:1.7;vertical-align:top;">${esc(r.article)}<br>${isDoc?`📂 ${esc(r.page)}${r.line&&r.line!=='해당없음'?' · 줄'+esc(r.line):''}`:` 🤖 AI 학습지식${r.url?' · '+esc(r.url):''}`}</td>`;
+    }).join('')}${pad}
+  </tr>
+  <tr><td colspan="${chunkSize+1}" style="height:4pt;background:#e8e8e8;border:none;"></td></tr>`;
+}).join('')}
+</tbody>
+</table>
+<div class="footer-bar"><span>법제처 &nbsp; 국가법령정보센터</span><span>본 비교표는 AI 분석 결과이며 법적 효력이 없습니다.</span><span>${esc(now)}</span></div>
+</body></html>`;
+
+  dl(new Blob(['\uFEFF'+lawHtml],{type:'application/msword'}),`법령비교표_${lastKw.slice(0,20)}_${now}.doc`);
+}
+
+function syncEditables(){
   document.querySelectorAll('.editable[data-field]').forEach(el=>{
     const f=el.dataset.field;
     if(f==='summary'&&lastData) lastData.summary=el.innerText;
@@ -768,91 +915,6 @@ function exportByType(type){
       if(r) r.translatedText=el.innerText;
     }
   });
-  const rows=getRows();
-  const topic=getTopicLabel();
-
-  function makeRow(cells,isHeader=false){
-    const shading=isHeader?'<w:shd w:val="clear" w:color="auto" w:fill="2D5BE3"/><w:jc w:val="center"/>':'';
-    const bold=isHeader?'<w:b/>':'';
-    const color=isHeader?'<w:color w:val="FFFFFF"/>':'';
-    return `<w:tr>${cells.map(c=>`<w:tc><w:tcPr>${shading}</w:tcPr><w:p><w:pPr><w:jc w:val="${isHeader?'center':'left'}"/></w:pPr><w:r><w:rPr>${bold}${color}<w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${esc(c)}</w:t></w:r></w:p></w:tc>`).join('')}</w:tr>`;
-  }
-
-  const headerRow=makeRow(['국가','한국어 번역·분석','원문 조항','출처'],true);
-  const dataRows=rows.map(r=>makeRow([
-    r.country,
-    r.translated,
-    r.original,
-    `${r.law} ${r.article}
-페이지: ${r.page}
-줄: ${r.line||'-'}`
-  ])).join('');
-
-  const xml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
-  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<w:body>
-<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${esc(topic)} 비교 분석 보고서</w:t></w:r></w:p>
-<w:p><w:r><w:rPr><w:color w:val="888888"/><w:sz w:val="20"/></w:rPr><w:t>검색: ${esc(lastKw)} | 생성일: ${esc(now)} | Google AI 분석</w:t></w:r></w:p>
-<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>AI 요약</w:t></w:r></w:p>
-<w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${esc(lastData.summary||'')}</w:t></w:r></w:p>
-<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>국가별 비교표</w:t></w:r></w:p>
-<w:tbl>
-<w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="9360" w:type="dxa"/>
-<w:tblBorders>
-<w:top w:val="single" w:sz="4" w:color="E2DED6"/>
-<w:left w:val="single" w:sz="4" w:color="E2DED6"/>
-<w:bottom w:val="single" w:sz="4" w:color="E2DED6"/>
-<w:right w:val="single" w:sz="4" w:color="E2DED6"/>
-<w:insideH w:val="single" w:sz="4" w:color="E2DED6"/>
-<w:insideV w:val="single" w:sz="4" w:color="E2DED6"/>
-</w:tblBorders></w:tblPr>
-${headerRow}${dataRows}
-</w:tbl>
-<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>
-</w:body></w:document>`;
-
-  // docx zip 생성
-  const rels=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
-  const wordRels=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
-  const contentTypes=`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
-
-  // JSZip 없이 직접 Blob으로 HTML 보고서를 .doc (Word HTML) 형식으로 저장
-  const wordHtml=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="UTF-8">
-<style>
-@page{size:A4 landscape;margin:1.5cm;}
-body{font-family:'맑은 고딕','Noto Sans KR',sans-serif;font-size:10pt;color:#1A1916;}
-h1{font-size:16pt;color:#2D5BE3;border-bottom:2pt solid #2D5BE3;padding-bottom:4pt;margin-bottom:6pt;}
-h2{font-size:12pt;color:#1A1916;margin-top:12pt;margin-bottom:4pt;}
-.meta{font-size:9pt;color:#888;margin-bottom:12pt;}
-.summary{background:#EEF2FD;border-left:4pt solid #2D5BE3;padding:8pt 10pt;margin-bottom:12pt;font-size:10pt;line-height:1.6;}
-table{border-collapse:collapse;width:100%;margin-top:8pt;}
-th{background:#2D5BE3;color:#fff;padding:6pt 8pt;font-size:9pt;text-align:left;border:1pt solid #2D5BE3;}
-td{padding:6pt 8pt;border:1pt solid #E2DED6;vertical-align:top;font-size:9pt;line-height:1.6;}
-tr:nth-child(even) td{background:#F7F6F2;}
-.src-doc{color:#1A7F4B;font-size:8pt;}
-.src-ai{color:#C4620A;font-size:8pt;}
-</style>
-</head><body>
-<h1>${esc(topic)} 비교 분석 보고서</h1>
-<div class="meta">검색: <b>${esc(lastKw)}</b> &nbsp;|&nbsp; 생성일: ${esc(now)} &nbsp;|&nbsp; Google AI 분석</div>
-${lastData.summary?`<div class="summary"><b>AI 요약:</b> ${esc(lastData.summary)}</div>`:''}
-<h2>국가별 비교표</h2>
-<table>
-<thead><tr><th style="width:80pt">국가</th><th>한국어 번역·분석</th><th style="width:160pt">원문 조항</th><th style="width:130pt">출처</th></tr></thead>
-<tbody>${rows.map(r=>{
-  const isDoc=r.page&&r.page!=='일반지식'&&r.page!=='일반 지식';
-  const srcHtml=isDoc
-    ?`<span class="src-doc">📂 업로드 문서<br>📄 ${esc(r.page)}<br>${r.line&&r.line!=='해당없음'?'✏️ 줄 '+esc(r.line)+'<br>':''}</span>`
-    :`<span class="src-ai">🤖 AI 학습지식<br>${r.url?`<a href="${esc(r.url)}">${esc(r.url)}</a>`:'공식사이트 참고'}</span>`;
-  return `<tr><td><b>${esc(r.country)}</b></td><td>${esc(r.translated)}</td><td style="font-family:monospace;font-size:8pt;">${esc(r.original)}</td><td>${esc(r.law)}<br>${esc(r.article)}<br>${srcHtml}</td></tr>`;
-}).join('')}
-</tbody></table>
-</body></html>`;
-
-  dl(new Blob(['﻿'+wordHtml],{type:'application/msword'}),`비교분석_${lastKw.slice(0,20)}_${now}.doc`);
 }
 
 function exportPDF(){
