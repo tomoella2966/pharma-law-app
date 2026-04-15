@@ -740,6 +740,9 @@ function renderResult(data,kw){
 
 function getRows(){return(lastData?.results||[]).filter(r=>active.has(r.countryKey)).map(r=>{const c=CS.find(x=>x.key===r.countryKey)||{};return{country:`${c.flag||''} ${c.name||r.countryKey}`,translated:r.translatedText||'',original:r.originalText||'',law:r.lawName||'',article:r.articleNum||'',page:r.sourcePage||'',line:r.sourceLine||'',url:r.officialUrl||''};});}
 
+// ── 공통 유틸: HTML 특수문자 이스케이프 ──
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
 // ── Word 생성: docx.js 없이 XML 직접 생성 ──
 function exportWordDoc(){
   exportByType('report');
@@ -767,9 +770,6 @@ function exportByType(type){
   });
   const rows=getRows();
   const topic=getTopicLabel();
-
-  //esc is global
-  function _esc_unused(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
   function makeRow(cells,isHeader=false){
     const shading=isHeader?'<w:shd w:val="clear" w:color="auto" w:fill="2D5BE3"/><w:jc w:val="center"/>':'';
